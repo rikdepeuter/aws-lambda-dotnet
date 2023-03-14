@@ -18,6 +18,12 @@ namespace Amazon.Lambda.TestTool
 
         public LambdaFunction LoadLambdaFuntion(string configFile, string functionHandler)
         {
+            var configInfo = LoadLambdaConfig(configFile);
+            return LoadLambdaFuntion(configInfo, functionHandler);
+        }
+
+        public LambdaConfigInfo LoadLambdaConfig(string configFile)
+        {
             var fullConfigFilePath = this.LambdaConfigFiles.FirstOrDefault(x =>
                 string.Equals(configFile, x, StringComparison.OrdinalIgnoreCase) || string.Equals(configFile, Path.GetFileName(x), StringComparison.OrdinalIgnoreCase));
             if (fullConfigFilePath == null)
@@ -25,8 +31,7 @@ namespace Amazon.Lambda.TestTool
                 throw new Exception($"{configFile} is not a config file for this project");
             }
 
-            var configInfo = LambdaDefaultsConfigFileParser.LoadFromFile(fullConfigFilePath);
-            return LoadLambdaFuntion(configInfo, functionHandler);
+            return LambdaDefaultsConfigFileParser.LoadFromFile(fullConfigFilePath);
         }
 
         public bool TryLoadLambdaFuntion(LambdaConfigInfo configInfo, string functionHandler, out LambdaFunction lambdaFunction)

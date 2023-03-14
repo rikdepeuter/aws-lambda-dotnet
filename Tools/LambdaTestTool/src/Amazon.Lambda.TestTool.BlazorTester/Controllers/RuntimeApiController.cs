@@ -1,8 +1,10 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Amazon.Lambda.TestTool.BlazorTester.Services;
+using Amazon.Lambda.TestTool.Runtime;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Amazon.Lambda.TestTool.BlazorTester.Controllers
@@ -18,6 +20,40 @@ namespace Amazon.Lambda.TestTool.BlazorTester.Controllers
             _runtimeApiDataStore = runtimeApiDataStore;
         }
 
+        [HttpPost("/runtime/invoke-event")]
+        public async Task<IActionResult> PostInvokeEvent(string configFile, string functionHandler, [FromServices] LocalLambdaOptions lambdaOptions)
+        {
+            var body = await new StreamReader(Request.Body).ReadToEndAsync();
+
+            var config = lambdaOptions.LoadLambdaConfig(configFile);
+            var function = lambdaOptions.LoadLambdaFuntion(config, functionHandler);
+
+            var request = new ExecutionRequest
+            {
+                Function = function,
+                AWSProfile = config.AWSProfile,
+                AWSRegion = config.AWSRegion,
+                Payload = body
+            };
+
+            await Console.Out.WriteLineAsync("Executing lambda function...");
+            await Console.Out.WriteLineAsync($"ConfigFile: {configFile}");
+            await Console.Out.WriteLineAsync($"FunctionHandler: {functionHandler}");
+            await Console.Out.WriteLineAsync($"Body: {body}");
+            var response = await lambdaOptions.LambdaRuntime.ExecuteLambdaFunctionAsync(request);
+
+            if (response.Error != null)
+            {
+                await Console.Out.WriteLineAsync($"Error: {response.Error}");
+            }
+            if (response.Response != null)
+            {
+                await Console.Out.WriteLineAsync($"Response: {response.Response}");
+            }
+
+            return Ok(response);
+        }
+
         [HttpPost("/runtime/test-event")]
         [HttpPost("/2015-03-31/functions/function/invocations")]
         public async Task<IActionResult> PostTestEvent()
@@ -28,16 +64,16 @@ namespace Amazon.Lambda.TestTool.BlazorTester.Controllers
 
             return Accepted();
         }
-        
+
         [HttpPost("/2018-06-01/runtime/init/error")]
         public IActionResult PostInitError([FromHeader(Name = "Lambda-Runtime-Function-Error-Type")] string errorType, [FromBody] string error)
         {
             Console.Error.WriteLine("Init Error Type: " + errorType);
             Console.Error.WriteLine(error);
             Console.Error.WriteLine(HEADER_BREAK);
-            return Accepted(new StatusResponse{Status = "success"});
+            return Accepted(new StatusResponse { Status = "success" });
         }
-        
+
         [HttpGet("/2018-06-01/runtime/invocation/next")]
         public async Task GetNextInvocation()
         {
@@ -49,7 +85,7 @@ namespace Amazon.Lambda.TestTool.BlazorTester.Controllers
 
             Console.WriteLine(HEADER_BREAK);
             Console.WriteLine($"Next invocation returned: {activeEvent.AwsRequestId}");
-            
+
             Response.Headers["Lambda-Runtime-Aws-Request-Id"] = activeEvent.AwsRequestId;
             Response.Headers["Lambda-Runtime-Trace-Id"] = Guid.NewGuid().ToString();
             Response.Headers["Lambda-Runtime-Invoked-Function-Arn"] = activeEvent.FunctionArn;
@@ -65,20 +101,20 @@ namespace Amazon.Lambda.TestTool.BlazorTester.Controllers
                 Response.Body.Close();
             }
         }
-        
+
         [HttpPost("/2018-06-01/runtime/invocation/{awsRequestId}/response")]
         public async Task<IActionResult> PostInvocationResponse(string awsRequestId)
         {
             using var reader = new StreamReader(Request.Body);
             var response = await reader.ReadToEndAsync();
-            
+
             _runtimeApiDataStore.ReportSuccess(awsRequestId, response);
-            
+
             Console.WriteLine(HEADER_BREAK);
             Console.WriteLine($"Response for request {awsRequestId}");
             Console.WriteLine(response);
 
-            return Accepted(new StatusResponse{Status = "success"});
+            return Accepted(new StatusResponse { Status = "success" });
         }
 
         [HttpPost("/2018-06-01/runtime/invocation/{awsRequestId}/error")]
@@ -86,16 +122,16 @@ namespace Amazon.Lambda.TestTool.BlazorTester.Controllers
         {
             using var reader = new StreamReader(Request.Body);
             var errorBody = await reader.ReadToEndAsync();
-            
+
             _runtimeApiDataStore.ReportError(awsRequestId, errorType, errorBody);
             await Console.Error.WriteLineAsync(HEADER_BREAK);
             await Console.Error.WriteLineAsync($"Request {awsRequestId} Error Type: {errorType}");
             await Console.Error.WriteLineAsync(errorBody);
-            
-            return Accepted(new StatusResponse{Status = "success"});
+
+            return Accepted(new StatusResponse { Status = "success" });
         }
     }
-    
+
     internal class StatusResponse
     {
         [System.Text.Json.Serialization.JsonPropertyName("status")]
